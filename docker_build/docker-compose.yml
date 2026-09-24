@@ -1,0 +1,72 @@
+services:
+  httpd:
+    build:
+      context: ./versions/${HTTPDVERSION}
+      args:
+        - HTTPD_CERT_SUBJ=${HTTPD_CERT_SUBJ}
+    image: "${PROJECT_NAME}-${HTTPDVERSION}"
+    container_name: "${PROJECT_NAME}-httpd"
+    hostname: "httpd_server"
+    user: "${UID}:${GID}"
+    restart: always
+    ports:
+      - "${HOST_UNSECURE_PORT}:8080"
+      - "${HOST_SECURE_PORT}:443"
+    volumes:
+      - ${DOCUMENT_ROOT}:/usr/local/apache2/htdocs:rw
+      - ${HTTPD_CERT_DIR}:/usr/local/apache2/conf/certs
+      - ./log/httpd:/usr/local/apache2/logs
+      - ./etc/httpd.conf:/usr/local/apache2/conf/httpd.conf
+      - ./etc/httpd-ssl.conf:/usr/local/apache2/conf/extra/httpd-ssl.conf
+    depends_on:
+      - php-fpm
+    networks:
+      lamp_network:
+        ipv4_address: 172.1.0.2
+  mysqld:
+    build:
+      context: ./versions/${MYSQLVERSION}
+    image:  "${PROJECT_NAME}-${MYSQLVERSION}"
+    container_name: "${PROJECT_NAME}-mysql"
+    hostname: "mysql_server"
+    user: "${UID}:${GID}"
+    restart: always
+    cap_add:
+      - SYS_NICE
+    ports:
+      - "${HOST_MYSQL_PORT}:3306"
+      - "${HOST_MYSQLX_PORT}:33060"
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    command: mysqld
+    volumes:
+      - ${MYSQL_DATA_DIR}:/var/lib/mysql:rw
+      - ${MYSQL_CERT_DIR}:/opt/mysql/certs:rw
+      - ./etc/my.cnf:/etc/my.cnf
+    networks:
+      lamp_network:
+        ipv4_address: 172.1.0.3
+  php-fpm:
+    build:
+      context: ./versions/${PHPVERSION}
+    image: "${PROJECT_NAME}-${PHPVERSION}"
+    container_name: "${PROJECT_NAME}-php-fpm"
+    hostname: "php-fpm_server"
+    user: "${UID}:${GID}"
+    restart: unless-stopped
+    working_dir: /var/www/html
+    ports:
+      - "${HOST_PHP_PORT}:9000"
+    volumes:
+      - ${DOCUMENT_ROOT}:/var/www/html:rw
+      - ${MYSQL_CERT_DIR}:/opt/php/mysql_certs
+      - ./etc/php.ini:/opt/php/etc/php/php.ini
+    networks:
+      lamp_network:
+        ipv4_address: 172.1.0.4
+        
+networks:
+  lamp_network:
+    ipam:
+      config:
+        - subnet: 172.1.0.0/16
