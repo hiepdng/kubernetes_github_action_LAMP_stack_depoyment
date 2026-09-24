@@ -1,0 +1,93 @@
+---
+# 1. MySQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-deployment
+  labels:
+    app: lamp
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "supersecretpassword"
+        - name: MYSQL_DATABASE
+          value: "mydb"
+        ports:
+        - containerPort: 3306
+          name: mysql
+
+---
+# 2. MySQL Service (Internal Cluster IP)
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  labels:
+    app: lamp
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+
+---
+# 3. Apache + PHP Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-deployment
+  labels:
+    app: lamp
+    tier: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: web
+        image: php:8.2-apache
+        ports:
+        - containerPort: 80
+          name: web
+        env:
+        - name: DB_HOST
+          value: "mysql-service"
+        - name: DB_PASSWORD
+          value: "supersecretpassword"
+        - name: DB_NAME
+          value: "mydb"
+
+---
+# 4. Apache Service (External LoadBalancer / NodePort)
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+  labels:
+    app: lamp
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: web
