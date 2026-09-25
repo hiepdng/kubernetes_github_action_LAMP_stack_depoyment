@@ -1,4 +1,4 @@
-name: Deploy Kubertnetes lamp to Local Machine
+name: Deploy Kubertnetes a LAMP stack on Local Machine
 
 on:
   #push:
@@ -7,9 +7,8 @@ on:
       - main  # Trigger on push to main branch
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: self-hosted  # Executes directly on your local Linux machine
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,4 +25,19 @@ jobs:
         run: sh setup.sh
         
       - name: Deploy Docker Compose
-        run: docker compose up -d --remove-orphans
+        run: docker compose --remove-orphans
+
+      - name: Verify Kubernetes Cluster Connection
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Deploy LAMP stack cluster
+        run: |
+          kubectl apply -f k8s_lampstack_deploy.yaml
+
+      - name: Check Deployment Status
+        run: |
+          kubectl rollout status deployment/mysql
+          kubectl rollout status deployment/apache-php
+          kubectl get svc
