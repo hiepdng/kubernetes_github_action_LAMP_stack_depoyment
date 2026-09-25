@@ -1,9 +1,10 @@
-name: Build and Deploy LAMP stack to K8s
+name: Deploy a LAMP stack on a remote host using Kubernetes
 
 on:
   #push:
   workflow_dispatch:
-    branches: [ "main" ]
+    branches: 
+      - main
 
 jobs:
   build-and-deploy:
@@ -11,23 +12,6 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-
-
-    - name: Log in to Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile
-        push: true
-        tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
-
 
     - name: Deploy to Remote Server via SSH
       uses: appleboy/ssh-action@master
@@ -48,22 +32,20 @@ jobs:
           # Setup
           sh setup.sh
 
-          # Restart docker compose
-          docker compose up -d --build --remove-orphans
+          # Deploy docker compose
+          docker compose --build --remove-orphans
 
-    - name: Set up Kubectl
-      uses: azure/setup-kubectl@v3
+    - name: Verify Kubernetes Cluster Connection
+      run: |
+        kubectl cluster-info
+        kubectl get nodes
 
-    - name: Authenticate to K8s Cluster
-      uses: azure/k8s-set-context@v4
-      with:
-        method: kubeconfig
-        kubeconfig: ${{ secrets.KUBE_CONFIG }}
+    - name: Deploy LAMP stack cluster
+      run: |
+        kubectl apply -f k8s_lampstack_deploy.yaml
 
-    - name: Deploy to Kubernetes cluster
-      uses: azure/k8s-deploy@v5
-      with:
-        manifests: |
-          kubernetes/mysql-deployment.yaml
-        images: |
-          ghcr.io/${{ github.repository }}:${{ github.sha }}
+    - name: Check Deployment Status
+      run: |
+        kubectl rollout status deployment/mysql
+        kubectl rollout status deployment/apache-php
+        kubectl get svc
