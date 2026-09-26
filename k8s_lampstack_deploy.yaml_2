@@ -1,0 +1,165 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  labels:
+    app: lamp
+spec:
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+    - name: mysqlx
+      port: 33060
+      targetPort: 33060
+  selector:
+    app: lamp
+    tier: mysql
+  clusterIP: 172.1.0.3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpd-service
+  labels:
+    app: lamp
+spec:
+  ports:
+    - name: http
+      port: 8080           #port access insude the cluster network
+      targetPort: 80       #port match the containerPort in the Deployment
+    - name: https
+      port: 443
+      targetPort: 443
+  selector:
+    app: lamp
+    tier: frontend
+  type: NodePort
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lamp-mysql
+  labels:
+    app: lamp
+spec:
+  selector:
+    matchLabels:
+      app: lamp
+      tier: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: lamp
+        tier: mysql
+    spec:
+      containers:
+        - image: lamp-mysql:lts-debian13
+          imagePullPolicy: Never
+          name: lamp-mysql
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: my-secret-pw
+          ports:
+            - containerPort: 3306
+              name: mysql
+            - containerPort: 33060
+              name: mysqlx
+          volumeMounts:
+            - name: MYSQL_DATA_DIR
+              mountPath: /var/lib/mysql  # The folder INSIDE your application container
+            - name: MYSQL_DATA_DIR
+              mountPath: /run/mysqld
+            - name: MYSQL_CERT_DIR
+              mountPath: /opt/mysql/certs
+            - name: MY_CNF
+              mountPath: /etc/my.cnf
+volumes:
+    - name: MYSQL_DATA_DIR
+      hostPath:
+        path: ./mysql_data          # The folder ON THE HOST node's file system
+        type: DirectoryOrCreate     # Automatically creates the host folder if it doesn't exist
+    - name: MYSQL_CERT_DIR
+      hostPath:
+        path: ./certs/mysql
+    - name: MY_CNF
+      hostPath:
+        path: ./certs/mysql
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lamp-frontend
+  labels:
+    app: lamp
+spec:
+  selector:
+    matchLabels:
+      app: lamp
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: lamp
+        tier: frontend
+    spec:
+      volumes:
+        - name: shared-html
+          emptyDir: {}
+      containers:
+        - image: lamp-httpd:2.4.68-debian13
+          imagePullPolicy: Never
+          name: httpd
+          ports:
+            - containerPort: 80
+              name: httpd
+          volumeMounts:
+            - name: DOCUMENT_ROOT
+              mountPath: /usr/local/apache2/htdocs  # The folder INSIDE your application container
+            - name: HTTPD_CERT_DIR
+              mountPath: /usr/local/apache2/conf/certs
+            - name: APACHE_LOG
+              mountPath: /usr/local/apache2/logs
+            - name: HTTPD_CONF
+              mountPath: /usr/local/apache2/conf/httpd.conf
+            - name: HTTPD-SSL_CONF
+              mountPath: /usr/local/apache2/conf/extra/httpd-ssl.conf 
+        - image: lamp-php:8.5.8-debian13-fpm
+          imagePullPolicy: Never
+          name: php-fpm
+          volumeMounts:
+            - name: DOCUMENT_ROOT
+              mountPath: /var/www/html
+            - name: MYSQL_CERT_DIR
+              mountPath: /opt/php/mysql_certs
+            - name: PHP_INI
+              mountPath: /opt/php/etc/php/php.ini
+volumes:
+    - name: DOCUMENT_ROOT
+      hostPath:
+        path: ./htdocs              # The folder ON THE HOST node's file system
+        type: DirectoryOrCreate     # Automatically creates the host folder if it doesn't exist
+    - name: HTTPD_CERT_DIR
+      hostPath:
+        path: ./certs/httpd
+    - name: APACHE_LOG
+      hostPath:
+        path: ./log/httpd
+    - name: HTTPD_CONF
+      hostPath: 
+        path: ./etc/httpd.conf
+    - name: HTTPD-SSL_CONF
+      hostPath: 
+        path: ./etc/httpd-ssl.conf
+    - name: MYSQL_CERT_DIR
+      hostPath:
+        path: ./certs/mysql
+    - name: PHP_INI
+      hostPath:
+        path: ./etc/php.ini
